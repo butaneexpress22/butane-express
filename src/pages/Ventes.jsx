@@ -9,6 +9,8 @@ export default function Ventes() {
   const [ventes, setVentes] = useState([])
   const [livreurs, setLivreurs] = useState([])
   const [filtre, setFiltre] = useState('attente_livraison')
+  const [filtreQuartier, setFiltreQuartier] = useState('')
+  const [filtreLivreur, setFiltreLivreur] = useState('')
   const [chargement, setChargement] = useState(true)
   const [showPanier, setShowPanier] = useState(false)
   const [venteAEncaisser, setVenteAEncaisser] = useState(null)
@@ -51,13 +53,37 @@ export default function Ventes() {
   const ventesAVeniralider = ventes.filter((v) => v.statut === 'a_valider' || v.statut === 'panier_attente')
 
   const ventesFiltrees = ventes.filter((v) => {
-    if (filtre === 'all') return true
-    if (filtre === 'attente_livraison') return v.statut === 'attente_livraison'
-    if (filtre === 'en_livraison') return v.statut === 'en_livraison'
-    if (filtre === 'validee') return v.statut === 'validee'
-    if (filtre === 'a_traiter') return v.statut === 'a_valider' || v.statut === 'panier_attente'
+    let passeStatut
+    if (filtre === 'all') passeStatut = true
+    else if (filtre === 'attente_livraison') passeStatut = v.statut === 'attente_livraison'
+    else if (filtre === 'en_livraison') passeStatut = v.statut === 'en_livraison'
+    else if (filtre === 'validee') passeStatut = v.statut === 'validee'
+    else if (filtre === 'a_traiter') passeStatut = v.statut === 'a_valider' || v.statut === 'panier_attente'
+    else passeStatut = true
+
+    if (!passeStatut) return false
+
+    // Filtre quartier (disponible sur "attente_livraison" et "validee")
+    if (filtreQuartier && (filtre === 'attente_livraison' || filtre === 'validee')) {
+      if (v.clients?.quartier !== filtreQuartier) return false
+    }
+
+    // Filtre livreur (disponible sur "en_livraison" et "validee")
+    if (filtreLivreur && (filtre === 'en_livraison' || filtre === 'validee')) {
+      if (v.livreur_id !== filtreLivreur) return false
+    }
+
     return true
   })
+
+  // Quartiers et livreurs disponibles pour les listes déroulantes de filtre
+  const quartiersDisponibles = [...new Set(ventes.map((v) => v.clients?.quartier).filter(Boolean))]
+
+  function changerRubrique(nouvelleRubrique) {
+    setFiltre(nouvelleRubrique)
+    setFiltreQuartier('')
+    setFiltreLivreur('')
+  }
 
   const caJour = ventesValidees
     .filter((v) => v.valide_at && new Date(v.valide_at).toDateString() === new Date().toDateString())
@@ -123,23 +149,40 @@ export default function Ventes() {
           <div className="alert alert-warning">
             ⏳ <div>
               <strong>{ventesAVeniralider.length} commande{ventesAVeniralider.length > 1 ? 's' : ''}</strong> en attente de décision (encaissement non finalisé).
-              <button className="btn btn-warning btn-xs" style={{ marginLeft: 10 }} onClick={() => setFiltre('a_traiter')}>Voir</button>
+              <button className="btn btn-warning btn-xs" style={{ marginLeft: 10 }} onClick={() => changerRubrique('a_traiter')}>Voir</button>
             </div>
           </div>
         )}
 
         <div className="tabs">
-          <TabBtn actif={filtre === 'all'} onClick={() => setFiltre('all')}>Toutes ({ventes.length})</TabBtn>
-          <TabBtn actif={filtre === 'attente_livraison'} onClick={() => setFiltre('attente_livraison')}>
+          <TabBtn actif={filtre === 'all'} onClick={() => changerRubrique('all')}>Toutes ({ventes.length})</TabBtn>
+          <TabBtn actif={filtre === 'attente_livraison'} onClick={() => changerRubrique('attente_livraison')}>
             ⏳ En attente de livraison ({ventesAttenteLivraison.length})
           </TabBtn>
-          <TabBtn actif={filtre === 'en_livraison'} onClick={() => setFiltre('en_livraison')}>
+          <TabBtn actif={filtre === 'en_livraison'} onClick={() => changerRubrique('en_livraison')}>
             🏍️ Livraison en cours ({ventesEnLivraison.length})
           </TabBtn>
-          <TabBtn actif={filtre === 'validee'} onClick={() => setFiltre('validee')}>
+          <TabBtn actif={filtre === 'validee'} onClick={() => changerRubrique('validee')}>
             ✅ Validées ({ventesValidees.length})
           </TabBtn>
         </div>
+
+        {(filtre === 'attente_livraison' || filtre === 'en_livraison' || filtre === 'validee') && (
+          <div className="filters-row">
+            {(filtre === 'attente_livraison' || filtre === 'validee') && (
+              <select className="f-select" value={filtreQuartier} onChange={(e) => setFiltreQuartier(e.target.value)}>
+                <option value="">Tous les quartiers</option>
+                {quartiersDisponibles.map((q) => <option key={q} value={q}>{q}</option>)}
+              </select>
+            )}
+            {(filtre === 'en_livraison' || filtre === 'validee') && (
+              <select className="f-select" value={filtreLivreur} onChange={(e) => setFiltreLivreur(e.target.value)}>
+                <option value="">Tous les livreurs</option>
+                {livreurs.map((l) => <option key={l.id} value={l.id}>{l.nom}</option>)}
+              </select>
+            )}
+          </div>
+        )}
 
         {chargement ? (
           <p className="td-light">Chargement des ventes…</p>
@@ -254,6 +297,9 @@ function VenteCard({ vente, livreurs, onAnnuler, onAssignerEtAction, onTraiterEn
           <span className="vente-meta">Client : </span>
           <span className="vente-client">{client?.nom || 'Client sans nom'}</span>
           <span className="vente-meta"> · CLT-{client?.numero_client} · {client?.contact || '—'} · {client?.quartier || '—'}</span>
+          {vente.numero_a_contacter && (
+            <span className="vente-meta"> · 📞 À contacter : <strong>{vente.numero_a_contacter}</strong></span>
+          )}
         </div>
         {vente.ventes_lignes?.length > 0 && (
           <div style={{ marginTop: 10 }}>
@@ -347,6 +393,7 @@ function VenteCard({ vente, livreurs, onAnnuler, onAssignerEtAction, onTraiterEn
 function EncaissementModal({ vente, onClose, onValide }) {
   const [sommeRecue, setSommeRecue] = useState('')
   const [modeLivraison, setModeLivraison] = useState('boutique')
+  const [numeroAContacter, setNumeroAContacter] = useState(vente.clients?.contact || '')
   const [enCours, setEnCours] = useState(false)
   const total = Number(vente.total)
   const recue = parseFloat(sommeRecue) || 0
@@ -369,6 +416,7 @@ function EncaissementModal({ vente, onClose, onValide }) {
         somme_recue: recue,
         monnaie: monnaie,
         mode_livraison: modeLivraison,
+        numero_a_contacter: numeroAContacter || null,
         valide_at: nouveauStatut === 'validee' ? new Date().toISOString() : null,
       })
       .eq('id', vente.id)
@@ -427,6 +475,18 @@ function EncaissementModal({ vente, onClose, onValide }) {
             </button>
           </div>
         </div>
+
+        {modeLivraison === 'domicile' && (
+          <div className="form-group" style={{ marginBottom: 14 }}>
+            <label className="form-label" style={{ fontSize: 13 }}>📞 Numéro à contacter pour la livraison</label>
+            <input
+              className="form-input"
+              placeholder="Numéro du client ou d'une autre personne à contacter"
+              value={numeroAContacter}
+              onChange={(e) => setNumeroAContacter(e.target.value)}
+            />
+          </div>
+        )}
 
         <div className="form-group" style={{ marginBottom: 14 }}>
           <label className="form-label" style={{ fontSize: 13 }}>💵 Somme reçue du client (F CFA)</label>

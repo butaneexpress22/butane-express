@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import ImportClientsModal from '../components/ImportClientsModal'
+import AjouterConsommationModal from '../components/AjouterConsommationModal'
 
 const QUARTIERS = ['Centre', 'Marché', 'Résidentiel', 'Périphérie', 'Abbeykro']
 
@@ -12,6 +14,7 @@ export default function Clients() {
   const [filtreQuartier, setFiltreQuartier] = useState('')
   const [filtreStatut, setFiltreStatut] = useState('')
   const [showNouveauClient, setShowNouveauClient] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [clientDetail, setClientDetail] = useState(null)
   const [page, setPage] = useState(1)
   const parPage = 20
@@ -57,9 +60,10 @@ export default function Clients() {
           <div className="topbar-title">Clients</div>
           <div className="topbar-sub">{clients.length} contacts enregistrés · {boutiqueActive?.nom}</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowNouveauClient(true)}>
-          + Nouveau client
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-outline" onClick={() => setShowImport(true)}>📥 Importer (CSV)</button>
+          <button className="btn btn-primary" onClick={() => setShowNouveauClient(true)}>+ Nouveau client</button>
+        </div>
       </div>
 
       <div className="content">
@@ -153,28 +157,42 @@ export default function Clients() {
       {showNouveauClient && (
         <NouveauClientModal
           boutique={boutiqueActive}
+          clients={clients}
           onClose={() => setShowNouveauClient(false)}
-          onCree={() => {
-            setShowNouveauClient(false)
-            chargerClients()
-          }}
+          onCree={() => { setShowNouveauClient(false); chargerClients() }}
+        />
+      )}
+
+      {showImport && (
+        <ImportClientsModal
+          boutique={boutiqueActive}
+          onClose={() => setShowImport(false)}
+          onTermine={() => { setShowImport(false); chargerClients() }}
         />
       )}
 
       {clientDetail && (
-        <FicheClientModal client={clientDetail} boutique={boutiqueActive} onClose={() => setClientDetail(null)} />
+        <FicheClientModal
+          client={clientDetail}
+          boutique={boutiqueActive}
+          onClose={() => setClientDetail(null)}
+          onMisAJour={() => { chargerClients() }}
+        />
       )}
     </>
   )
 }
 
-function NouveauClientModal({ boutique, onClose, onCree }) {
+function NouveauClientModal({ boutique, clients, onClose, onCree }) {
   const [nom, setNom] = useState('')
   const [contact, setContact] = useState('')
   const [quartier, setQuartier] = useState(QUARTIERS[0])
   const [detail, setDetail] = useState('')
   const [latitude, setLatitude] = useState('')
   const [longitude, setLongitude] = useState('')
+  const [rechercheParrain, setRechercheParrain] = useState('')
+  const [parrainSelectionne, setParrainSelectionne] = useState(null)
+  const [suggestionsParrain, setSuggestionsParrain] = useState([])
   const [prochainNumero, setProchainNumero] = useState('…')
   const [enCours, setEnCours] = useState(false)
 
@@ -189,6 +207,17 @@ function NouveauClientModal({ boutique, onClose, onCree }) {
     if (boutique) calculerProchainNumero()
   }, [boutique])
 
+  useEffect(() => {
+    const terme = rechercheParrain.trim().toLowerCase()
+    if (terme.length < 2) {
+      setSuggestionsParrain([])
+      return
+    }
+    setSuggestionsParrain(
+      clients.filter((c) => (c.nom || '').toLowerCase().includes(terme) || c.numero_client.includes(terme)).slice(0, 6)
+    )
+  }, [rechercheParrain, clients])
+
   async function enregistrer() {
     setEnCours(true)
     const { error } = await supabase.from('clients').insert({
@@ -200,6 +229,7 @@ function NouveauClientModal({ boutique, onClose, onCree }) {
       detail: detail || null,
       latitude: latitude ? parseFloat(latitude) : null,
       longitude: longitude ? parseFloat(longitude) : null,
+      parrain_id: parrainSelectionne?.id || null,
     })
     setEnCours(false)
     if (!error) onCree()
@@ -244,6 +274,29 @@ function NouveauClientModal({ boutique, onClose, onCree }) {
             <label className="form-label">Longitude</label>
             <input className="form-input" placeholder="-4.4415" value={longitude} onChange={(e) => setLongitude(e.target.value)} />
           </div>
+          <div className="form-group" style={{ gridColumn: '1 / -1', position: 'relative' }}>
+            <label className="form-label">Parrain (facultatif)</label>
+            {parrainSelectionne ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input className="form-input ro" value={`${parrainSelectionne.nom || 'Sans nom'} — ${parrainSelectionne.numero_client}${boutique?.code}`} readOnly style={{ flex: 1 }} />
+                <button className="btn btn-outline btn-sm" onClick={() => { setParrainSelectionne(null); setRechercheParrain('') }}>Retirer</button>
+              </div>
+            ) : (
+              <>
+                <input className="form-input" placeholder="Rechercher par nom ou numéro…" value={rechercheParrain} onChange={(e) => setRechercheParrain(e.target.value)} />
+                {suggestionsParrain.length > 0 && (
+                  <div className="suggestions-box">
+                    {suggestionsParrain.map((c) => (
+                      <div key={c.id} className="suggestion-item" onClick={() => { setParrainSelectionne(c); setSuggestionsParrain([]) }}>
+                        <strong>{c.nom || 'Sans nom'}</strong> <span className="td-light">— {c.numero_client}{boutique?.code}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            <span className="form-hint">Si ce client a été amené par un client existant, son parrain recevra +1 conso à sa première recharge.</span>
+          </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-outline" onClick={onClose}>Annuler</button>
@@ -256,9 +309,11 @@ function NouveauClientModal({ boutique, onClose, onCree }) {
   )
 }
 
-function FicheClientModal({ client, boutique, onClose }) {
+function FicheClientModal({ client, boutique, onClose, onMisAJour }) {
   const [ventes, setVentes] = useState([])
   const [chargement, setChargement] = useState(true)
+  const [clientActuel, setClientActuel] = useState(client)
+  const [showAjoutConso, setShowAjoutConso] = useState(false)
 
   useEffect(() => {
     async function charger() {
@@ -267,7 +322,7 @@ function FicheClientModal({ client, boutique, onClose }) {
         .from('ventes')
         .select('*, ventes_lignes(*, articles(designation, categorie))')
         .eq('client_id', client.id)
-        .in('statut', ['validee', 'en_livraison', 'livree'])
+        .in('statut', ['validee', 'en_livraison'])
         .order('valide_at', { ascending: false })
         .limit(10)
       setVentes(data || [])
@@ -276,29 +331,39 @@ function FicheClientModal({ client, boutique, onClose }) {
     charger()
   }, [client.id])
 
+  async function rafraichirClient() {
+    const { data } = await supabase.from('clients').select('*').eq('id', client.id).single()
+    if (data) setClientActuel(data)
+    onMisAJour()
+  }
+
   return (
     <div className="modal-overlay show" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal modal-lg">
         <div className="modal-header">
-          <div className="modal-title">👤 {client.nom || 'Client sans nom'} — {client.numero_client}{boutique?.code}</div>
+          <div className="modal-title">👤 {clientActuel.nom || 'Client sans nom'} — {clientActuel.numero_client}{boutique?.code}</div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
         <div className="two-col" style={{ marginBottom: 16 }}>
           <div className="kpi-card">
-            <div className="kpi-value">{client.conso_totale}</div>
+            <div className="kpi-value">{clientActuel.conso_totale}</div>
             <div className="kpi-label">Total recharges depuis le début</div>
           </div>
           <div className="kpi-card">
-            <div className="kpi-value" style={{ color: 'var(--warning)' }}>{client.fidelite_compteur}/10 ⭐</div>
+            <div className="kpi-value" style={{ color: 'var(--warning)' }}>{clientActuel.fidelite_compteur}/10 ⭐</div>
             <div className="kpi-label">Progression fidélité actuelle</div>
           </div>
         </div>
 
         <div style={{ background: 'var(--bg)', borderRadius: 8, padding: 14, marginBottom: 16, fontSize: 13 }}>
-          <div><strong>Contact :</strong> {client.contact || '—'}</div>
-          <div><strong>Quartier :</strong> {client.quartier || '—'} {client.detail && `· ${client.detail}`}</div>
-          <div><strong>Statut :</strong> {client.statut === 'actif' ? 'Client actif' : 'Prospect (jamais commandé)'}</div>
+          <div><strong>Contact :</strong> {clientActuel.contact || '—'}</div>
+          <div><strong>Quartier :</strong> {clientActuel.quartier || '—'} {clientActuel.detail && `· ${clientActuel.detail}`}</div>
+          <div><strong>Statut :</strong> {clientActuel.statut === 'actif' ? 'Client actif' : 'Prospect (jamais commandé)'}</div>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+          <button className="btn btn-primary btn-sm" onClick={() => setShowAjoutConso(true)}>➕ Ajouter une consommation</button>
         </div>
 
         <div className="section-title">Historique des 10 dernières ventes</div>
@@ -332,6 +397,15 @@ function FicheClientModal({ client, boutique, onClose }) {
           <button className="btn btn-outline" onClick={onClose}>Fermer</button>
         </div>
       </div>
+
+      {showAjoutConso && (
+        <AjouterConsommationModal
+          client={clientActuel}
+          boutique={boutique}
+          onClose={() => setShowAjoutConso(false)}
+          onAjoute={() => { setShowAjoutConso(false); rafraichirClient() }}
+        />
+      )}
     </div>
   )
 }
