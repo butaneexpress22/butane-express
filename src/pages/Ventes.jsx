@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import PanierModal from '../components/PanierModal'
 import TicketModal from '../components/TicketModal'
+import ClotureJournaliereModal from '../components/ClotureJournaliereModal'
 
 export default function Ventes() {
   const { boutiqueActive } = useAuth()
@@ -15,6 +16,7 @@ export default function Ventes() {
   const [showPanier, setShowPanier] = useState(false)
   const [venteAEncaisser, setVenteAEncaisser] = useState(null)
   const [venteImprimer, setVenteImprimer] = useState(null)
+  const [showCloture, setShowCloture] = useState(false)
 
   const chargerVentes = useCallback(async () => {
     if (!boutiqueActive) return
@@ -37,7 +39,7 @@ export default function Ventes() {
 
   const chargerLivreurs = useCallback(async () => {
     if (!boutiqueActive) return
-    const { data } = await supabase.from('livreurs').select('*').eq('boutique_id', boutiqueActive.id).eq('actif', true)
+    const { data } = await supabase.from('livreurs').select('*').eq('boutique_id', boutiqueActive.id).eq('actif', true).eq('supprime', false)
     setLivreurs(data || [])
   }, [boutiqueActive])
 
@@ -132,9 +134,12 @@ export default function Ventes() {
             Gestion des ventes · {boutiqueActive?.nom} · {new Date().toLocaleDateString('fr-FR')}
           </div>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowPanier(true)}>
-          + Nouvelle vente
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-outline" onClick={() => setShowCloture(true)}>📋 Clôture journalière</button>
+          <button className="btn btn-primary" onClick={() => setShowPanier(true)}>
+            + Nouvelle vente
+          </button>
+        </div>
       </div>
 
       <div className="content">
@@ -234,6 +239,10 @@ export default function Ventes() {
 
       {venteImprimer && (
         <TicketModal vente={venteImprimer} boutique={boutiqueActive} onClose={() => setVenteImprimer(null)} />
+      )}
+
+      {showCloture && (
+        <ClotureJournaliereModal onClose={() => setShowCloture(false)} />
       )}
     </>
   )

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { journaliser } from '../lib/journal'
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell, BarChart, Bar, Legend,
@@ -10,7 +11,7 @@ const aujourdhui = () => new Date().toISOString().slice(0, 10)
 const COULEURS_QUARTIER = ['#E8500A', '#16A34A', '#0369A1', '#D97706', '#7C3AED', '#DB2777', '#0D9488']
 
 export default function TableauDeBord() {
-  const { boutiqueActive, user } = useAuth()
+  const { boutiqueActive, user, isAdmin } = useAuth()
   const [chargement, setChargement] = useState(true)
   const [fondCaisse, setFondCaisse] = useState(null)
   const [depensesJour, setDepensesJour] = useState(0)
@@ -218,11 +219,19 @@ export default function TableauDeBord() {
   async function validerFondCaisse() {
     const montant = parseFloat(nouveauFond)
     if (isNaN(montant) || montant < 0) return
+    const ancienMontant = fondMontant
 
     const { data, error } = await supabase
       .from('fonds_caisse')
       .upsert(
-        { boutique_id: boutiqueActive.id, date_jour: aujourdhui(), montant, defini_par: user.id },
+        {
+          boutique_id: boutiqueActive.id,
+          date_jour: aujourdhui(),
+          montant,
+          defini_par: user.id,
+          modifie_par: user.id,
+          modifie_le: new Date().toISOString(),
+        },
         { onConflict: 'boutique_id,date_jour' }
       )
       .select()
@@ -232,6 +241,14 @@ export default function TableauDeBord() {
       setFondCaisse(data)
       setShowModalFond(false)
       setNouveauFond('')
+      await journaliser({
+        boutiqueId: boutiqueActive.id,
+        utilisateurId: user.id,
+        action: 'modif_fond_caisse',
+        cibleType: 'fond_caisse',
+        cibleId: data.id,
+        detail: `Fond de caisse modifié de ${ancienMontant.toLocaleString('fr-FR')} F à ${montant.toLocaleString('fr-FR')} F`,
+      })
     }
   }
 
@@ -268,13 +285,19 @@ export default function TableauDeBord() {
               <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Space Grotesk' }}>
                 {fondMontant.toLocaleString('fr-FR')} F
               </div>
-              <button
-                className="btn btn-sm"
-                style={{ background: 'rgba(255,255,255,0.12)', color: 'white', marginTop: 6, border: 'none' }}
-                onClick={() => { setNouveauFond(String(fondMontant)); setShowModalFond(true) }}
-              >
-                Modifier
-              </button>
+              {isAdmin ? (
+                <button
+                  className="btn btn-sm"
+                  style={{ background: 'rgba(255,255,255,0.12)', color: 'white', marginTop: 6, border: 'none' }}
+                  onClick={() => { setNouveauFond(String(fondMontant)); setShowModalFond(true) }}
+                >
+                  Modifier
+                </button>
+              ) : (
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', display: 'block', marginTop: 6 }}>
+                  🔒 Modifiable par l'admin uniquement
+                </span>
+              )}
             </div>
           </div>
 

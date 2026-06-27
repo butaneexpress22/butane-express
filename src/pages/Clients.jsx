@@ -3,11 +3,12 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import ImportClientsModal from '../components/ImportClientsModal'
 import AjouterConsommationModal from '../components/AjouterConsommationModal'
-
-const QUARTIERS = ['Centre', 'Marché', 'Résidentiel', 'Périphérie', 'Abbeykro']
+import { useQuartiers } from '../hooks/useQuartiers'
+import { journaliser } from '../lib/journal'
 
 export default function Clients() {
-  const { boutiqueActive } = useAuth()
+  const { boutiqueActive, user, isAdmin } = useAuth()
+  const { quartiers } = useQuartiers(boutiqueActive?.id)
   const [clients, setClients] = useState([])
   const [chargement, setChargement] = useState(true)
   const [recherche, setRecherche] = useState('')
@@ -26,6 +27,7 @@ export default function Clients() {
       .from('clients')
       .select('*')
       .eq('boutique_id', boutiqueActive.id)
+      .eq('supprime', false)
       .order('created_at', { ascending: false })
 
     if (!error) setClients(data || [])
@@ -79,7 +81,7 @@ export default function Clients() {
           </div>
           <select className="f-select" value={filtreQuartier} onChange={(e) => { setFiltreQuartier(e.target.value); setPage(1) }}>
             <option value="">Tous les quartiers</option>
-            {QUARTIERS.map((q) => <option key={q} value={q}>{q}</option>)}
+            {quartiers.map((q) => <option key={q.id} value={q.nom}>{q.nom}</option>)}
           </select>
           <select className="f-select" value={filtreStatut} onChange={(e) => { setFiltreStatut(e.target.value); setPage(1) }}>
             <option value="">Tous</option>
@@ -155,11 +157,13 @@ export default function Clients() {
       </div>
 
       {showNouveauClient && (
-        <NouveauClientModal
+        <ClientFormModal
+          mode="creation"
           boutique={boutiqueActive}
           clients={clients}
+          quartiers={quartiers}
           onClose={() => setShowNouveauClient(false)}
-          onCree={() => { setShowNouveauClient(false); chargerClients() }}
+          onTermine={() => { setShowNouveauClient(false); chargerClients() }}
         />
       )}
 
@@ -175,26 +179,34 @@ export default function Clients() {
         <FicheClientModal
           client={clientDetail}
           boutique={boutiqueActive}
+          clients={clients}
+          quartiers={quartiers}
+          isAdmin={isAdmin}
+          user={user}
           onClose={() => setClientDetail(null)}
           onMisAJour={() => { chargerClients() }}
+          onSupprime={() => { setClientDetail(null); chargerClients() }}
         />
       )}
     </>
   )
 }
 
-function NouveauClientModal({ boutique, clients, onClose, onCree }) {
-  const [nom, setNom] = useState('')
-  const [contact, setContact] = useState('')
-  const [quartier, setQuartier] = useState(QUARTIERS[0])
-  const [detail, setDetail] = useState('')
-  const [latitude, setLatitude] = useState('')
-  const [longitude, setLongitude] = useState('')
+// ── Formulaire client réutilisable pour Création ET Modification ──
+function ClientFormModal({ mode, client, boutique, clients, quartiers, isAdmin, user, onClose, onTermine }) {
+  const [nom, setNom] = useState(client?.nom || '')
+  const [contact, setContact] = useState(client?.contact || '')
+  const [quartier, setQuartier] = useState(client?.quartier || quartiers[0]?.nom || '')
+  const [detail, setDetail] = useState(client?.detail || '')
+  const [latitude, setLatitude] = useState(client?.latitude || '')
+  const [longitude, setLongitude] = useState(client?.longitude || '')
   const [rechercheParrain, setRechercheParrain] = useState('')
   const [parrainSelectionne, setParrainSelectionne] = useState(null)
   const [suggestionsParrain, setSuggestionsParrain] = useState([])
   const [prochainNumero, setProchainNumero] = useState('…')
   const [enCours, setEnCours] = useState(false)
+
+  const estModification = mode === 'modification'
 
   useEffect(() => {
     async function calculerProchainNumero() {
@@ -204,8 +216,15 @@ function NouveauClientModal({ boutique, clients, onClose, onCree }) {
         .eq('boutique_id', boutique.id)
       setProchainNumero(String((count || 0) + 1).padStart(4, '0'))
     }
-    if (boutique) calculerProchainNumero()
-  }, [boutique])
+    if (boutique && !estModification) calculerProchainNumero()
+  }, [boutique, estModification])
+
+  useEffect(() => {
+    if (estModification && client?.parrain_id) {
+      const p = clients.find((c) => c.id === client.parrain_id)
+      if (p) setParrainSelectionne(p)
+    }
+  }, [])
 
   useEffect(() => {
     const terme = rechercheParrain.trim().toLowerCase()
@@ -214,39 +233,72 @@ function NouveauClientModal({ boutique, clients, onClose, onCree }) {
       return
     }
     setSuggestionsParrain(
-      clients.filter((c) => (c.nom || '').toLowerCase().includes(terme) || c.numero_client.includes(terme)).slice(0, 6)
+      clients.filter((c) => c.id !== client?.id && ((c.nom || '').toLowerCase().includes(terme) || c.numero_client.includes(terme))).slice(0, 6)
     )
-  }, [rechercheParrain, clients])
+  }, [rechercheParrain, clients, client])
 
   async function enregistrer() {
     setEnCours(true)
-    const { error } = await supabase.from('clients').insert({
-      numero_client: prochainNumero,
-      boutique_id: boutique.id,
-      nom: nom || null,
-      contact: contact || null,
-      quartier,
-      detail: detail || null,
-      latitude: latitude ? parseFloat(latitude) : null,
-      longitude: longitude ? parseFloat(longitude) : null,
-      parrain_id: parrainSelectionne?.id || null,
-    })
-    setEnCours(false)
-    if (!error) onCree()
-    else alert('Erreur lors de la création du client.')
+
+    if (estModification) {
+      const { error } = await supabase
+        .from('clients')
+        .update({
+          nom: nom || null,
+          contact: contact || null,
+          quartier,
+          detail: detail || null,
+          latitude: latitude ? parseFloat(latitude) : null,
+          longitude: longitude ? parseFloat(longitude) : null,
+          parrain_id: parrainSelectionne?.id || null,
+          modifie_le: new Date().toISOString(),
+          modifie_par: user?.id || null,
+        })
+        .eq('id', client.id)
+
+      setEnCours(false)
+      if (!error) {
+        await journaliser({
+          boutiqueId: boutique.id,
+          utilisateurId: user?.id,
+          action: 'modification_client',
+          cibleType: 'client',
+          cibleId: client.id,
+          detail: `Client ${client.numero_client}${boutique.code} modifié`,
+        })
+        onTermine()
+      } else {
+        alert('Erreur lors de la modification du client.')
+      }
+    } else {
+      const { error } = await supabase.from('clients').insert({
+        numero_client: prochainNumero,
+        boutique_id: boutique.id,
+        nom: nom || null,
+        contact: contact || null,
+        quartier,
+        detail: detail || null,
+        latitude: latitude ? parseFloat(latitude) : null,
+        longitude: longitude ? parseFloat(longitude) : null,
+        parrain_id: parrainSelectionne?.id || null,
+      })
+      setEnCours(false)
+      if (!error) onTermine()
+      else alert('Erreur lors de la création du client.')
+    }
   }
 
   return (
     <div className="modal-overlay show" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
-          <div className="modal-title">👤 Nouveau client</div>
+          <div className="modal-title">{estModification ? '✏️ Modifier le client' : '👤 Nouveau client'}</div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="form-grid">
           <div className="form-group">
-            <label className="form-label">N° Client (auto)</label>
-            <input className="form-input ro" value={`${prochainNumero}${boutique?.code || ''}`} readOnly />
+            <label className="form-label">N° Client {estModification ? '' : '(auto)'}</label>
+            <input className="form-input ro" value={`${estModification ? client.numero_client : prochainNumero}${boutique?.code || ''}`} readOnly />
           </div>
           <div className="form-group">
             <label className="form-label">Nom & Prénom (facultatif)</label>
@@ -259,7 +311,8 @@ function NouveauClientModal({ boutique, clients, onClose, onCree }) {
           <div className="form-group">
             <label className="form-label">Quartier</label>
             <select className="form-input form-select" value={quartier} onChange={(e) => setQuartier(e.target.value)}>
-              {QUARTIERS.map((q) => <option key={q} value={q}>{q}</option>)}
+              {quartiers.length === 0 && <option value="">Aucun quartier configuré</option>}
+              {quartiers.map((q) => <option key={q.id} value={q.nom}>{q.nom}</option>)}
             </select>
           </div>
           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
@@ -301,7 +354,7 @@ function NouveauClientModal({ boutique, clients, onClose, onCree }) {
         <div className="modal-footer">
           <button className="btn btn-outline" onClick={onClose}>Annuler</button>
           <button className="btn btn-primary" onClick={enregistrer} disabled={enCours}>
-            {enCours ? 'Enregistrement…' : 'Enregistrer le client'}
+            {enCours ? 'Enregistrement…' : estModification ? 'Enregistrer les modifications' : 'Enregistrer le client'}
           </button>
         </div>
       </div>
@@ -309,11 +362,13 @@ function NouveauClientModal({ boutique, clients, onClose, onCree }) {
   )
 }
 
-function FicheClientModal({ client, boutique, onClose, onMisAJour }) {
+function FicheClientModal({ client, boutique, clients, quartiers, isAdmin, user, onClose, onMisAJour, onSupprime }) {
   const [ventes, setVentes] = useState([])
   const [chargement, setChargement] = useState(true)
   const [clientActuel, setClientActuel] = useState(client)
   const [showAjoutConso, setShowAjoutConso] = useState(false)
+  const [showModification, setShowModification] = useState(false)
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false)
 
   useEffect(() => {
     async function charger() {
@@ -335,6 +390,46 @@ function FicheClientModal({ client, boutique, onClose, onMisAJour }) {
     const { data } = await supabase.from('clients').select('*').eq('id', client.id).single()
     if (data) setClientActuel(data)
     onMisAJour()
+  }
+
+  async function supprimer() {
+    if (!confirm(`Confirmer la suppression du client ${clientActuel.nom || 'sans nom'} (${clientActuel.numero_client}${boutique?.code}) ? Cette action est réservée à l'administrateur.`)) return
+    setSuppressionEnCours(true)
+
+    const { error } = await supabase
+      .from('clients')
+      .update({ supprime: true, modifie_le: new Date().toISOString(), modifie_par: user?.id || null })
+      .eq('id', clientActuel.id)
+
+    setSuppressionEnCours(false)
+    if (!error) {
+      await journaliser({
+        boutiqueId: boutique.id,
+        utilisateurId: user?.id,
+        action: 'suppression_client',
+        cibleType: 'client',
+        cibleId: clientActuel.id,
+        detail: `Client ${clientActuel.numero_client}${boutique.code} (${clientActuel.nom || 'sans nom'}) supprimé`,
+      })
+      onSupprime()
+    } else {
+      alert('Erreur lors de la suppression.')
+    }
+  }
+
+  if (showModification) {
+    return (
+      <ClientFormModal
+        mode="modification"
+        client={clientActuel}
+        boutique={boutique}
+        clients={clients}
+        quartiers={quartiers}
+        user={user}
+        onClose={() => setShowModification(false)}
+        onTermine={() => { setShowModification(false); rafraichirClient() }}
+      />
+    )
   }
 
   return (
@@ -362,8 +457,18 @@ function FicheClientModal({ client, boutique, onClose, onMisAJour }) {
           <div><strong>Statut :</strong> {clientActuel.statut === 'actif' ? 'Client actif' : 'Prospect (jamais commandé)'}</div>
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           <button className="btn btn-primary btn-sm" onClick={() => setShowAjoutConso(true)}>➕ Ajouter une consommation</button>
+          {isAdmin ? (
+            <>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowModification(true)}>✏️ Modifier</button>
+              <button className="btn btn-danger btn-sm" onClick={supprimer} disabled={suppressionEnCours}>
+                {suppressionEnCours ? 'Suppression…' : '🗑️ Supprimer'}
+              </button>
+            </>
+          ) : (
+            <span className="td-light" style={{ fontSize: 11, alignSelf: 'center' }}>🔒 Modifier/Supprimer réservé à l'administrateur</span>
+          )}
         </div>
 
         <div className="section-title">Historique des 10 dernières ventes</div>

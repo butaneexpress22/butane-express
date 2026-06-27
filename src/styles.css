@@ -126,6 +126,7 @@ tbody td{padding:10px 10px;font-size:13px;vertical-align:middle;}
 .tag-b12{background:#EDE9FE;color:#5B21B6;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;}
 .kpi-grid{display:grid;gap:14px;margin-bottom:20px;}
 .kpi-4{grid-template-columns:repeat(4,1fr);}
+.kpi-3{grid-template-columns:repeat(3,1fr);}
 .kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);}
 .kpi-value{font-size:22px;font-weight:700;font-family:'Space Grotesk',sans-serif;}
 .kpi-label{font-size:11px;color:var(--text-secondary);margin-top:2px;}

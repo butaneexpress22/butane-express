@@ -21,7 +21,7 @@ export default function Depenses() {
       .limit(80)
     setDepenses(data || [])
 
-    const { data: cats } = await supabase.from('categories_depenses').select('*').order('nom')
+    const { data: cats } = await supabase.from('categories_depenses').select('*').eq('actif', true).order('nom')
     setCategories(cats || [])
 
     setChargement(false)

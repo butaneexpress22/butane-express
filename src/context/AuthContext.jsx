@@ -3,11 +3,14 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
+const aujourdhui = () => new Date().toISOString().slice(0, 10)
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [boutiqueActive, setBoutiqueActive] = useState(null)
   const [boutiques, setBoutiques] = useState([])
   const [loading, setLoading] = useState(true)
+  const [fondCaisseRequis, setFondCaisseRequis] = useState(false)
 
   // Au chargement, on regarde si une session existe déjà (stockée localement)
   useEffect(() => {
@@ -38,11 +41,22 @@ export function AuthProvider({ children }) {
         .single()
       setBoutiqueActive(data)
       setBoutiques(data ? [data] : [])
+
+      // Vérifie si le fond de caisse du jour a déjà été défini pour cette boutique.
+      // Seulement pour les caissiers — l'admin n'est jamais bloqué par cette vérification.
+      if (data) {
+        const { data: fond } = await supabase
+          .from('fonds_caisse')
+          .select('id')
+          .eq('boutique_id', data.id)
+          .eq('date_jour', aujourdhui())
+          .maybeSingle()
+        setFondCaisseRequis(!fond)
+      }
     }
   }
 
   async function login(code, motDePasse) {
-    // Recherche de l'utilisateur par code
     const { data: utilisateur, error } = await supabase
       .from('utilisateurs')
       .select('*')
@@ -71,6 +85,7 @@ export function AuthProvider({ children }) {
     setUser(null)
     setBoutiqueActive(null)
     setBoutiques([])
+    setFondCaisseRequis(false)
     sessionStorage.removeItem('butane_user')
     sessionStorage.removeItem('butane_boutique_active')
   }
@@ -78,6 +93,11 @@ export function AuthProvider({ children }) {
   function changerBoutiqueActive(boutique) {
     setBoutiqueActive(boutique)
     sessionStorage.setItem('butane_boutique_active', JSON.stringify(boutique))
+  }
+
+  // Appelé une fois le fond de caisse saisi par le caissier, pour débloquer l'accès à l'app
+  function fondCaisseDefini() {
+    setFondCaisseRequis(false)
   }
 
   const isAdmin = user?.role === 'admin'
@@ -93,6 +113,8 @@ export function AuthProvider({ children }) {
         login,
         logout,
         changerBoutiqueActive,
+        fondCaisseRequis,
+        fondCaisseDefini,
       }}
     >
       {children}

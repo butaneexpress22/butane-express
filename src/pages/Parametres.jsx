@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { useQuartiers } from '../hooks/useQuartiers'
+import { useLivreurs } from '../hooks/useLivreurs'
+import { useCategoriesDepenses } from '../hooks/useCategoriesDepenses'
+import ListeConfigurable from '../components/ListeConfigurable'
 
 export default function Parametres() {
   const { boutiqueActive } = useAuth()
@@ -12,6 +16,10 @@ export default function Parametres() {
   const [fondDefaut, setFondDefaut] = useState(50000)
   const [enCours, setEnCours] = useState(false)
   const [message, setMessage] = useState('')
+
+  const { quartiers, rafraichir: rafraichirQuartiers } = useQuartiers(boutiqueActive?.id)
+  const { livreurs, rafraichir: rafraichirLivreurs } = useLivreurs(boutiqueActive?.id)
+  const { categories, rafraichir: rafraichirCategories } = useCategoriesDepenses()
 
   useEffect(() => {
     if (boutiqueActive) {
@@ -41,6 +49,40 @@ export default function Parametres() {
 
     setEnCours(false)
     setMessage(error ? 'Erreur lors de la sauvegarde.' : 'Paramètres enregistrés ✓')
+  }
+
+  // ── Quartiers ──
+  async function ajouterQuartier({ nom }) {
+    const { error } = await supabase.from('quartiers').insert({ boutique_id: boutiqueActive.id, nom })
+    if (!error) rafraichirQuartiers()
+    return { success: !error }
+  }
+  async function supprimerQuartier(item) {
+    const { error } = await supabase.from('quartiers').delete().eq('id', item.id)
+    if (!error) rafraichirQuartiers()
+  }
+
+  // ── Livreurs ──
+  async function ajouterLivreur({ nom, contact }) {
+    const { error } = await supabase.from('livreurs').insert({ boutique_id: boutiqueActive.id, nom, contact: contact || null })
+    if (!error) rafraichirLivreurs()
+    return { success: !error }
+  }
+  async function supprimerLivreur(item) {
+    // Suppression douce : on garde l'historique des ventes qui référencent ce livreur
+    const { error } = await supabase.from('livreurs').update({ supprime: true, actif: false }).eq('id', item.id)
+    if (!error) rafraichirLivreurs()
+  }
+
+  // ── Catégories de dépenses ──
+  async function ajouterCategorie({ nom }) {
+    const { error } = await supabase.from('categories_depenses').insert({ nom })
+    if (!error) rafraichirCategories()
+    return { success: !error, message: error?.code === '23505' ? 'Cette catégorie existe déjà.' : undefined }
+  }
+  async function supprimerCategorie(item) {
+    const { error } = await supabase.from('categories_depenses').update({ actif: false }).eq('id', item.id)
+    if (!error) rafraichirCategories()
   }
 
   return (
@@ -80,7 +122,7 @@ export default function Parametres() {
               <div className="form-group">
                 <label className="form-label">Fond de caisse par défaut</label>
                 <input className="form-input" type="number" value={fondDefaut} onChange={(e) => setFondDefaut(e.target.value)} />
-                <span className="form-hint">Montant proposé chaque matin si non encore défini</span>
+                <span className="form-hint">Montant proposé chaque matin si non encore défini (demandé une seule fois par jour au caissier)</span>
               </div>
               {message && (
                 <p style={{ fontSize: 13, color: message.includes('Erreur') ? 'var(--danger)' : 'var(--success)' }}>{message}</p>
@@ -91,13 +133,56 @@ export default function Parametres() {
             </div>
           </div>
 
-          <div className="card">
-            <div className="card-header"><div className="card-title">🏪 Info réseau</div></div>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-              <div><strong>Version app :</strong> Butane Express v1.0</div>
-              <div><strong>Boutique :</strong> {boutiqueActive?.nom}</div>
-              <div><strong>Code boutique :</strong> {boutiqueActive?.code}</div>
-              <div><strong>Ville :</strong> {boutiqueActive?.ville || '—'}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <ListeConfigurable
+              titre="📍 Quartiers"
+              description="Utilisés à la création d'un client et dans les filtres de ventes/clients."
+              items={quartiers}
+              placeholder="Nom du nouveau quartier"
+              onAjouter={ajouterQuartier}
+              onSupprimer={supprimerQuartier}
+            />
+
+            <ListeConfigurable
+              titre="🏍️ Livreurs"
+              description="Utilisés pour assigner les livraisons et analyser leurs performances."
+              items={livreurs}
+              placeholder="Nom du livreur"
+              onAjouter={ajouterLivreur}
+              onSupprimer={supprimerLivreur}
+              champsSupplementaires={(valeurs, setValeurs) => (
+                <input
+                  className="form-input"
+                  placeholder="Contact (optionnel)"
+                  value={valeurs.contact || ''}
+                  onChange={(e) => setValeurs({ ...valeurs, contact: e.target.value })}
+                  style={{ flex: 1, minWidth: 120 }}
+                />
+              )}
+              rendreLigne={(item) => (
+                <span style={{ fontSize: 13, fontWeight: 500 }}>
+                  {item.nom} {item.contact && <span className="td-light">· {item.contact}</span>}
+                </span>
+              )}
+            />
+
+            <ListeConfigurable
+              titre="💸 Catégories de dépenses"
+              description="Utilisées pour catégoriser et analyser vos dépenses."
+              items={categories}
+              placeholder="Nom de la catégorie"
+              onAjouter={ajouterCategorie}
+              onSupprimer={supprimerCategorie}
+            />
+
+            <div className="card" style={{ marginBottom: 0 }}>
+              <div className="card-header"><div className="card-title">🏪 Info réseau</div></div>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+                <div><strong>Version app :</strong> Butane Express v1.0</div>
+                <div><strong>Boutique :</strong> {boutiqueActive?.nom}</div>
+                <div><strong>Code boutique :</strong> {boutiqueActive?.code}</div>
+                <div><strong>Ville :</strong> {boutiqueActive?.ville || '—'}</div>
+              </div>
             </div>
           </div>
         </div>

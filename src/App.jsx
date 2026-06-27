@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import AppLayout from './components/AppLayout'
+import FondCaisseOuvertureModal from './components/FondCaisseOuvertureModal'
 import TableauDeBord from './pages/TableauDeBord'
 import Ventes from './pages/Ventes'
 import Clients from './pages/Clients'
@@ -18,9 +19,10 @@ import Comptabilite from './pages/Comptabilite'
 import Parametres from './pages/Parametres'
 
 function RouteProtegee({ children }) {
-  const { user, loading } = useAuth()
+  const { user, loading, fondCaisseRequis } = useAuth()
   if (loading) return <div className="loading-screen">Chargement…</div>
   if (!user) return <Navigate to="/connexion" replace />
+  if (fondCaisseRequis) return <FondCaisseOuvertureModal />
   return children
 }
 
