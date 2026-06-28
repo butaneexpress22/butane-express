@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-// Parseur CSV simple : gère les guillemets et les virgules ou points-virgules comme séparateur
+// Parseur CSV simple : gère les guillemets et les virgules ou points-virgules comme séparateur.
+// Si le fichier contient des points-virgules, on les considère comme séparateur de colonnes
+// en priorité (cas le plus fréquent en France/Côte d'Ivoire, où la virgule sert de décimale
+// dans les nombres comme les coordonnées GPS : "5,85974").
 function parseCSV(text) {
-  const separateur = text.includes(';') && !text.includes(',') ? ';' : ','
+  const separateur = text.includes(';') ? ';' : ','
   const lignes = text.split(/\r?\n/).filter((l) => l.trim().length > 0)
   return lignes.map((ligne) => {
     const valeurs = []
@@ -28,6 +31,17 @@ function parseCSV(text) {
 // Ordre des colonnes attendu :
 // 0:N° client  1:Nom  2:Contact  3:Quartier  4:Détail  5:Latitude  6:Longitude  7:Consommation
 const INDEX_CONSO = 7
+
+// Convertit un nombre écrit avec une virgule décimale (ex: "5,85974") en notation point (5.85974).
+// Si le séparateur de colonnes du fichier est déjà la virgule, ce cas ne devrait pas se produire
+// (les valeurs sont alors déjà bien séparées) ; cette fonction sert surtout pour les fichiers
+// à séparateur point-virgule, où Excel garde la virgule comme séparateur décimal.
+function parseNombreDecimal(valeur) {
+  if (!valeur) return null
+  const propre = valeur.trim().replace(',', '.')
+  const nombre = parseFloat(propre)
+  return isNaN(nombre) ? null : nombre
+}
 
 export default function ImportClientsModal({ boutique, onClose, onTermine }) {
   const [fichier, setFichier] = useState(null)
@@ -83,8 +97,8 @@ export default function ImportClientsModal({ boutique, onClose, onTermine }) {
 
       const conso = parseInt(consoStr) || 0
       const numeroPropre = numeroClient.trim()
-      const latitude = latitudeStr && !isNaN(parseFloat(latitudeStr)) ? parseFloat(latitudeStr) : null
-      const longitude = longitudeStr && !isNaN(parseFloat(longitudeStr)) ? parseFloat(longitudeStr) : null
+      const latitude = parseNombreDecimal(latitudeStr)
+      const longitude = parseNombreDecimal(longitudeStr)
 
       // Vérifie si le client existe déjà (même numéro dans cette boutique)
       const { data: existant } = await supabase
