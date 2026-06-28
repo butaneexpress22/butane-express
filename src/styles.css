@@ -196,9 +196,27 @@ tbody td{padding:10px 10px;font-size:13px;vertical-align:middle;}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:10px;}
 
 @media print {
-  .sidebar, .topbar, .modal-footer, .modal-close { display: none !important; }
+  /* Par défaut, on cache tout le corps de la page... */
+  body * { visibility: hidden; }
+
+  /* ...puis on rend visible uniquement la zone du ticket et son contenu. */
+  #zone-impression, #zone-impression * { visibility: visible; }
+
+  #zone-impression {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+
+  /* Masque explicitement les éléments d'interface qui ne doivent jamais s'imprimer. */
+  .sidebar, .topbar, .modal-footer, .modal-close, .modal-header,
+  .modal-overlay > .modal > div:not(#zone-impression) {
+    display: none !important;
+  }
+
   .modal-overlay { position: static; background: none; backdrop-filter: none; }
-  .modal { box-shadow: none; width: 100%; }
+  .modal { box-shadow: none; width: 100%; padding: 0; }
 }
 
 .pagination-row{display:flex;align-items:center;justify-content:space-between;margin-top:14px;}

@@ -1,6 +1,10 @@
 -- ════════════════════════════════════════════════════════
--- BUTANE EXPRESS — MISE À JOUR : Quartiers configurables
--- À exécuter après les scripts précédents
+-- BUTANE EXPRESS — Création table Quartiers (VIDE, sans pré-remplissage)
+-- ════════════════════════════════════════════════════════
+--
+-- Crée uniquement la structure de la table. Aucun quartier
+-- n'est ajouté automatiquement — vous les créerez vous-même
+-- depuis l'application (Paramètres → 📍 Quartiers).
 -- ════════════════════════════════════════════════════════
 
 create table if not exists quartiers (
@@ -11,14 +15,7 @@ create table if not exists quartiers (
   unique(boutique_id, nom)
 );
 
--- Reprend les 5 quartiers qui étaient codés en dur, pour la boutique N'douci
-insert into quartiers (boutique_id, nom)
-select id, q.nom
-from boutiques b
-cross join (values ('Centre'), ('Marché'), ('Résidentiel'), ('Périphérie'), ('Abbeykro')) as q(nom)
-where b.code = 'ND'
-on conflict (boutique_id, nom) do nothing;
-
 -- ════════════════════════════════════════════════════════
--- FIN
+-- FIN — Allez dans Paramètres → 📍 Quartiers pour ajouter
+-- vos premiers quartiers.
 -- ════════════════════════════════════════════════════════
