@@ -11,6 +11,7 @@ export default function Achats() {
   const [chargement, setChargement] = useState(true)
   const [showModal, setShowModal] = useState(false)
   const [showArticleModal, setShowArticleModal] = useState(false)
+  const [articleAModifier, setArticleAModifier] = useState(null)
   const [recherche, setRecherche] = useState('')
 
   const charger = useCallback(async () => {
@@ -145,7 +146,7 @@ export default function Achats() {
             ) : (
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>ID</th><th>Désignation</th><th>Classe</th><th>Catég.</th><th>Prix achat</th><th>Prix vente</th>{isAdmin && <th></th>}</tr></thead>
+                  <thead><tr><th>ID</th><th>Désignation</th><th>Classe</th><th>Catég.</th><th>Prix achat</th><th>Prix vente</th><th>Seuil alerte</th><th></th></tr></thead>
                   <tbody>
                     {articles.map((a) => (
                       <tr key={a.id}>
@@ -155,9 +156,13 @@ export default function Achats() {
                         <td>{a.categorie && <span className={'tag-' + a.categorie.toLowerCase()}>{a.categorie}</span>}</td>
                         <td>{Number(a.prix_achat).toLocaleString('fr-FR')} F</td>
                         <td>{Number(a.prix_vente).toLocaleString('fr-FR')} F</td>
-                        {isAdmin && (
-                          <td><button className="btn btn-danger btn-xs" onClick={() => desactiverArticle(a)}>🗑️ Désactiver</button></td>
-                        )}
+                        <td className="td-light">{a.seuil_alerte}</td>
+                        <td style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-outline btn-xs" onClick={() => setArticleAModifier(a)}>✏️ Modifier</button>
+                          {isAdmin && (
+                            <button className="btn btn-danger btn-xs" onClick={() => desactiverArticle(a)}>🗑️ Désactiver</button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -184,6 +189,16 @@ export default function Achats() {
           boutique={boutiqueActive}
           onClose={() => setShowArticleModal(false)}
           onCree={() => { setShowArticleModal(false); charger() }}
+        />
+      )}
+
+      {articleAModifier && (
+        <CreerArticleModal
+          mode="modification"
+          article={articleAModifier}
+          boutique={boutiqueActive}
+          onClose={() => setArticleAModifier(null)}
+          onCree={() => { setArticleAModifier(null); charger() }}
         />
       )}
     </>
@@ -364,13 +379,14 @@ function AchatModal({ boutique, user, articles, onClose, onCree }) {
   )
 }
 
-function CreerArticleModal({ boutique, onClose, onCree }) {
-  const [designation, setDesignation] = useState('')
-  const [classe, setClasse] = useState('gaz')
-  const [categorie, setCategorie] = useState('B6')
-  const [prixAchat, setPrixAchat] = useState('')
-  const [prixVente, setPrixVente] = useState('')
-  const [seuilAlerte, setSeuilAlerte] = useState('10')
+function CreerArticleModal({ mode = 'creation', article, boutique, onClose, onCree }) {
+  const estModification = mode === 'modification'
+  const [designation, setDesignation] = useState(article?.designation || '')
+  const [classe, setClasse] = useState(article?.classe || 'gaz')
+  const [categorie, setCategorie] = useState(article?.categorie || 'B6')
+  const [prixAchat, setPrixAchat] = useState(article ? String(article.prix_achat) : '')
+  const [prixVente, setPrixVente] = useState(article ? String(article.prix_vente) : '')
+  const [seuilAlerte, setSeuilAlerte] = useState(article ? String(article.seuil_alerte) : '10')
   const [enCours, setEnCours] = useState(false)
 
   async function enregistrer() {
@@ -379,37 +395,61 @@ function CreerArticleModal({ boutique, onClose, onCree }) {
       return
     }
     setEnCours(true)
-    const { count } = await supabase.from('articles').select('id', { count: 'exact', head: true })
-    const code = 'ART-' + String((count || 0) + 1).padStart(3, '0')
 
-    const { data: article, error } = await supabase
-      .from('articles')
-      .insert({
-        code,
-        designation,
-        classe,
-        categorie: classe === 'gaz' ? categorie : null,
-        prix_achat: parseFloat(prixAchat) || 0,
-        prix_vente: parseFloat(prixVente) || 0,
-        seuil_alerte: parseInt(seuilAlerte) || 10,
-      })
-      .select()
-      .single()
+    if (estModification) {
+      const { error } = await supabase
+        .from('articles')
+        .update({
+          designation,
+          classe,
+          categorie: classe === 'gaz' ? categorie : null,
+          prix_achat: parseFloat(prixAchat) || 0,
+          prix_vente: parseFloat(prixVente) || 0,
+          seuil_alerte: parseInt(seuilAlerte) || 10,
+        })
+        .eq('id', article.id)
 
-    if (!error && article && boutique) {
-      await supabase.from('stock').insert({ boutique_id: boutique.id, article_id: article.id, quantite: 0 })
+      setEnCours(false)
+      if (!error) onCree()
+      else alert("Erreur lors de la modification de l'article.")
+    } else {
+      const { count } = await supabase.from('articles').select('id', { count: 'exact', head: true })
+      const code = 'ART-' + String((count || 0) + 1).padStart(3, '0')
+
+      const { data: nouvelArticle, error } = await supabase
+        .from('articles')
+        .insert({
+          code,
+          designation,
+          classe,
+          categorie: classe === 'gaz' ? categorie : null,
+          prix_achat: parseFloat(prixAchat) || 0,
+          prix_vente: parseFloat(prixVente) || 0,
+          seuil_alerte: parseInt(seuilAlerte) || 10,
+        })
+        .select()
+        .single()
+
+      if (!error && nouvelArticle && boutique) {
+        await supabase.from('stock').insert({ boutique_id: boutique.id, article_id: nouvelArticle.id, quantite: 0 })
+      }
+      setEnCours(false)
+      onCree()
     }
-    setEnCours(false)
-    onCree()
   }
 
   return (
     <div className="modal-overlay show" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
-          <div className="modal-title">📦 Créer un article</div>
+          <div className="modal-title">{estModification ? '✏️ Modifier l\'article' : '📦 Créer un article'}</div>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
+        {estModification && (
+          <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: 'var(--text-secondary)' }}>
+            ID : <strong>{article.code}</strong> — Les ventes déjà enregistrées avec cet article ne seront pas modifiées rétroactivement.
+          </div>
+        )}
         <div className="form-grid">
           <div className="form-group" style={{ gridColumn: '1 / -1' }}>
             <label className="form-label">Désignation / Compagnie</label>
@@ -445,10 +485,11 @@ function CreerArticleModal({ boutique, onClose, onCree }) {
         <div className="modal-footer">
           <button className="btn btn-outline" onClick={onClose}>Annuler</button>
           <button className="btn btn-primary" onClick={enregistrer} disabled={enCours}>
-            {enCours ? 'Création…' : "Créer l'article"}
+            {enCours ? (estModification ? 'Enregistrement…' : 'Création…') : estModification ? 'Enregistrer les modifications' : "Créer l'article"}
           </button>
         </div>
       </div>
+
     </div>
   )
 }
