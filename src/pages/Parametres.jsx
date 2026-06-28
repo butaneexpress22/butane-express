@@ -5,6 +5,7 @@ import { useQuartiers } from '../hooks/useQuartiers'
 import { useLivreurs } from '../hooks/useLivreurs'
 import { useCategoriesDepenses } from '../hooks/useCategoriesDepenses'
 import ListeConfigurable from '../components/ListeConfigurable'
+import AjustementStockVidesCard from '../components/AjustementStockVidesCard'
 
 export default function Parametres() {
   const { boutiqueActive } = useAuth()
@@ -174,6 +175,8 @@ export default function Parametres() {
               onAjouter={ajouterCategorie}
               onSupprimer={supprimerCategorie}
             />
+
+            <AjustementStockVidesCard />
 
             <div className="card" style={{ marginBottom: 0 }}>
               <div className="card-header"><div className="card-title">🏪 Info réseau</div></div>
