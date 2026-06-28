@@ -24,8 +24,8 @@ export default function Stock() {
       .select('*, articles(*)')
       .eq('boutique_id', boutiqueActive.id)
 
-    const gaz = (stockData || []).filter((s) => s.articles?.classe === 'gaz')
-    const acc = (stockData || []).filter((s) => s.articles?.classe === 'accessoire')
+    const gaz = (stockData || []).filter((s) => s.articles?.classe === 'gaz' && s.articles?.actif)
+    const acc = (stockData || []).filter((s) => s.articles?.classe === 'accessoire' && s.articles?.actif)
     setArticlesGaz(gaz)
     setArticlesAcc(acc)
 
