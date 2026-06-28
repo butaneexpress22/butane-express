@@ -209,6 +209,12 @@ tbody td{padding:10px 10px;font-size:13px;vertical-align:middle;}
     width: 100%;
   }
 
+  /* Texte plus marqué pour une meilleure lisibilité sur papier thermique. */
+  #zone-impression, #zone-impression * {
+    font-weight: 700 !important;
+    color: #000 !important;
+  }
+
   /* Masque explicitement les éléments d'interface qui ne doivent jamais s'imprimer. */
   .sidebar, .topbar, .modal-footer, .modal-close, .modal-header,
   .modal-overlay > .modal > div:not(#zone-impression) {

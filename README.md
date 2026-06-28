@@ -41,6 +41,7 @@ Application web pour la gestion de Butane Express : ventes, stock, clients, fid�
 ## 🆕 Mises à jour récentes (v9)
 
 - **Impression — Correction majeure** : auparavant, lancer l'impression réelle (pas l'aperçu) affichait toute la page (sidebar, boutons, fond gris) en plus du ticket. Désormais, seul le contenu du ticket (reçu client + souche livreur, ou ticket d'inventaire stock) est imprimé — tout le reste de l'interface est automatiquement masqué au moment de l'impression.
+- **Impression — Texte en gras** : le texte du ticket imprimé est maintenant en gras et en noir pur, pour une meilleure lisibilité sur papier thermique (l'aperçu à l'écran reste inchangé, cette modification ne s'applique qu'au moment de l'impression réelle).
 - **Quartiers — Script alternatif sans pré-remplissage** : `supabase-quartiers-vide.sql` crée la table sans les 5 quartiers de démonstration, pour repartir d'une liste totalement vide.
 
 ## 🆕 Mises à jour précédentes (v8)
